@@ -316,6 +316,8 @@ pub struct TextureView {
     context: Arc<C>,
     id: ObjectId,
     data: Box<Data>,
+    texture: TextureDescriptor<'static>,
+    descriptor: TextureViewDescriptor<'static>,
 }
 #[cfg(send_sync)]
 static_assertions::assert_impl_all!(TextureView: Send, Sync);
@@ -3140,6 +3142,11 @@ impl Texture {
             context: Arc::clone(&self.context),
             id,
             data,
+            texture: self.descriptor.clone(),
+            descriptor: TextureViewDescriptor {
+                label: None,
+                ..desc.clone()
+            },
         }
     }
 
@@ -3227,6 +3234,74 @@ impl Drop for Texture {
         if self.owned && !thread::panicking() {
             self.context.texture_drop(&self.id, self.data.as_ref());
         }
+    }
+}
+
+impl TextureView {
+    /// Returns the size of this `TextureView`.
+    ///
+    /// This is always equal to the `size` that was specified when creating the `Texture` this view was created from.
+    pub fn size(&self) -> Extent3d {
+        self.texture.size
+    }
+
+    /// Returns the width of this `TextureView`.
+    ///
+    /// This is always equal to the `size.width` that was specified when creating the `Texture` this view was created from.
+    pub fn width(&self) -> u32 {
+        self.texture.size.width
+    }
+
+    /// Returns the height of this `TextureView`.
+    ///
+    /// This is always equal to the `size.height` that was specified when creating the `Texture` this view was created from.
+    pub fn height(&self) -> u32 {
+        self.texture.size.height
+    }
+
+    /// Returns the sample_count of this `TextureView`.
+    ///
+    /// This is always equal to the `sample_count` that was specified when creating the `Texture` this view was created from.
+    pub fn sample_count(&self) -> u32 {
+        self.texture.sample_count
+    }
+
+    /// Returns the dimension of this `TextureView`.
+    pub fn dimension(&self) -> TextureViewDimension {
+        self.descriptor.dimension.unwrap_or(
+            match (self.texture.dimension, self.texture.array_layer_count()) {
+                (TextureDimension::D1, _) => TextureViewDimension::D1,
+                (TextureDimension::D2, 1) => TextureViewDimension::D2,
+                (TextureDimension::D2, _) => TextureViewDimension::D2Array,
+                (TextureDimension::D3, _) => TextureViewDimension::D3,
+            },
+        )
+    }
+
+    /// Returns the format of this `TextureView`.
+    pub fn format(&self) -> TextureFormat {
+        self.descriptor.format.unwrap_or({
+            match (self.descriptor.aspect, self.texture.format) {
+                (TextureAspect::DepthOnly, TextureFormat::Depth24PlusStencil8) => {
+                    TextureFormat::Depth24Plus
+                }
+                (TextureAspect::DepthOnly, TextureFormat::Depth32FloatStencil8) => {
+                    TextureFormat::Depth32Float
+                }
+                (
+                    TextureAspect::StencilOnly,
+                    TextureFormat::Depth24PlusStencil8 | TextureFormat::Depth32FloatStencil8,
+                ) => TextureFormat::Stencil8,
+                (_, format) => format,
+            }
+        })
+    }
+
+    /// Returns the allowed usages of this `TextureView`.
+    ///
+    /// This is always equal to the `usage` that was specified when creating the `Texture` this view was created from.
+    pub fn usage(&self) -> TextureUsages {
+        self.texture.usage
     }
 }
 
